@@ -1,0 +1,1161 @@
+<div class="min-h-screen bg-stone-100 text-stone-900 flex flex-col font-sans selection:bg-amber-100 selection:text-stone-900">
+  <!-- Top Navigation Bar -->
+  <header class="bg-white border-b border-stone-200 sticky top-0 z-30 px-4 sm:px-6 py-3.5 flex items-center justify-between shadow-xs">
+    <div class="flex items-center gap-3">
+      <button
+        id="dashboard-toggle-sidebar-btn"
+        (click)="isSidebarOpen.set(!isSidebarOpen())"
+        class="p-2 rounded-xl text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
+        title="Toggle Entry History"
+      >
+        <mat-icon class="text-xl">menu</mat-icon>
+      </button>
+
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-stone-900 text-stone-50 flex items-center justify-center shadow-xs">
+          <mat-icon class="text-lg">auto_stories</mat-icon>
+        </div>
+        <div>
+          <h1 class="text-sm font-semibold tracking-tight text-stone-900 flex items-center gap-2">
+            <span>Gemini Reflection Journal</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 uppercase tracking-wider">Cloud Isolated</span>
+          </h1>
+          <p class="text-xs text-stone-500 hidden sm:block">Conversational Self-Discovery & Firestore Archive</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Controls: Save status, New entry, User info & Signout -->
+    <div class="flex items-center gap-3">
+      <!-- Sync / Save Status Indicator -->
+      <div class="hidden md:flex items-center gap-1.5 text-xs text-stone-500 mr-2">
+        @if (journalService.isSaving()) {
+          <mat-icon class="animate-spin text-sm text-stone-600">sync</mat-icon>
+          <span>Saving to Firestore...</span>
+        } @else if (journalService.lastSaveError()) {
+          <mat-icon class="text-sm text-rose-600">error</mat-icon>
+          <span class="text-rose-600 font-medium">Save Error</span>
+        } @else {
+          <mat-icon class="text-sm text-emerald-600">cloud_done</mat-icon>
+          <span>Firestore Connected</span>
+        }
+      </div>
+
+      <!-- Admin Control Portal Access -->
+      @if (firebaseService.isAdmin()) {
+        <button
+          id="dashboard-admin-portal-btn"
+          (click)="navigateToAdmin()"
+          class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+          title="Admin Control Portal"
+        >
+          <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-700">shield</mat-icon>
+          <span class="hidden sm:inline">Admin Portal</span>
+        </button>
+      }
+
+      <button
+        id="dashboard-new-entry-btn"
+        (click)="initNewEntry()"
+        class="px-3.5 py-2 rounded-xl bg-stone-900 text-stone-50 text-xs sm:text-sm font-medium hover:bg-stone-800 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+      >
+        <mat-icon class="text-base">add</mat-icon>
+        <span>New Reflection</span>
+      </button>
+
+      <!-- User Profile & Sign Out -->
+      @if (firebaseService.currentUser(); as user) {
+        <div id="dashboard-user-profile-badge" class="flex items-center gap-2.5 pl-2 border-l border-stone-200">
+          @if (user.photoURL) {
+            <img [src]="user.photoURL" alt="Avatar" class="w-8 h-8 rounded-full border border-stone-200 object-cover" referrerpolicy="no-referrer" />
+          } @else {
+            <div class="w-8 h-8 rounded-full bg-stone-200 text-stone-700 font-semibold text-xs flex items-center justify-center shrink-0">
+              {{ (user.displayName || user.email || 'U').charAt(0).toUpperCase() }}
+            </div>
+          }
+          <div class="flex flex-col text-left max-w-[130px] sm:max-w-[200px]">
+            <p class="text-xs font-semibold text-stone-900 leading-none truncate">{{ user.displayName || (user.email ? user.email.split('@')[0] : 'User') }}</p>
+            <p class="text-[10px] text-stone-500 leading-tight truncate mt-0.5">{{ user.email || 'Authenticated User' }}</p>
+          </div>
+          <button
+            id="dashboard-signout-btn"
+            (click)="signOut()"
+            class="p-2 rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
+            title="Sign Out"
+          >
+            <mat-icon class="text-lg">logout</mat-icon>
+          </button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <!-- Banner Alerts -->
+  @if (saveSuccessBanner()) {
+    <div class="bg-emerald-600 text-white px-4 py-2 text-xs font-medium flex items-center justify-center gap-2 transition-all">
+      <mat-icon class="text-sm">check_circle</mat-icon>
+      <span>Reflection successfully saved to your isolated Cloud Firestore collection.</span>
+    </div>
+  }
+
+  @if (journalService.lastSaveError(); as saveError) {
+    <div class="bg-rose-50 border-b border-rose-200 text-rose-800 px-4 py-2.5 text-xs flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <mat-icon class="text-rose-600 text-base">warning</mat-icon>
+        <span><strong>Database Save Failed:</strong> {{ saveError }}</span>
+      </div>
+      <button
+        id="dashboard-retry-save-btn"
+        (click)="saveCurrentEntry()"
+        class="px-3 py-1 bg-rose-700 text-white rounded-lg text-xs font-medium hover:bg-rose-800 transition-colors cursor-pointer flex items-center gap-1"
+      >
+        <mat-icon class="text-sm">replay</mat-icon>
+        <span>Retry Save</span>
+      </button>
+    </div>
+  }
+
+  @if (copyBanner(); as bannerText) {
+    <div class="bg-stone-900 text-white px-4 py-1.5 text-xs text-center font-medium sticky top-14 z-40">
+      {{ bannerText }}
+    </div>
+  }
+
+  <!-- Main Layout Grid -->
+  <div class="flex-1 flex overflow-hidden">
+    <!-- Left Sidebar: Entry History -->
+    @if (isSidebarOpen()) {
+      <aside class="w-80 sm:w-96 bg-white border-r border-stone-200 flex flex-col flex-shrink-0 z-20">
+        <!-- Sidebar Header & Search -->
+        <div class="p-4 border-b border-stone-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+              <mat-icon class="text-sm">history</mat-icon>
+              <span>Past Entries ({{ filteredEntries().length }})</span>
+            </h2>
+            <span class="text-[11px] text-stone-400">Owner Isolated</span>
+          </div>
+
+          <!-- Search Input -->
+          <div class="relative">
+            <mat-icon class="absolute left-3 top-2.5 text-stone-400 text-base">search</mat-icon>
+            <input
+              id="dashboard-search-input"
+              type="text"
+              [value]="searchQuery()"
+              (input)="searchQuery.set($any($event.target).value)"
+              placeholder="Search title, tags, thoughts..."
+              class="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-stone-50 border border-stone-200 focus:outline-hidden focus:border-stone-400 transition-colors"
+            />
+            @if (searchQuery()) {
+              <button
+                id="dashboard-clear-search-btn"
+                (click)="searchQuery.set('')"
+                class="absolute right-2.5 top-2.5 text-stone-400 hover:text-stone-600"
+              >
+                <mat-icon class="text-sm">close</mat-icon>
+              </button>
+            }
+          </div>
+
+          <!-- Mood Filter Chips -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] no-scrollbar">
+            <button
+              id="filter-mood-all"
+              (click)="selectedMoodFilter.set('all')"
+              class="px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0"
+              [class]="selectedMoodFilter() === 'all' ? 'bg-stone-900 text-stone-50' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'"
+            >
+              All
+            </button>
+            <button
+              id="filter-mood-peaceful"
+              (click)="selectedMoodFilter.set('peaceful')"
+              class="px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              [class]="selectedMoodFilter() === 'peaceful' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'"
+            >
+              <span>🌿 Peaceful</span>
+            </button>
+            <button
+              id="filter-mood-inspired"
+              (click)="selectedMoodFilter.set('inspired')"
+              class="px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              [class]="selectedMoodFilter() === 'inspired' ? 'bg-amber-700 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'"
+            >
+              <span>✨ Inspired</span>
+            </button>
+            <button
+              id="filter-mood-focused"
+              (click)="selectedMoodFilter.set('focused')"
+              class="px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              [class]="selectedMoodFilter() === 'focused' ? 'bg-indigo-700 text-white' : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100'"
+            >
+              <span>🎯 Focused</span>
+            </button>
+            <button
+              id="filter-mood-clarity"
+              (click)="selectedMoodFilter.set('seeking_clarity')"
+              class="px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              [class]="selectedMoodFilter() === 'seeking_clarity' ? 'bg-sky-700 text-white' : 'bg-sky-50 text-sky-800 hover:bg-sky-100'"
+            >
+              <span>🔍 Clarity</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- History Entry List -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-2">
+          @if (journalService.isLoadingEntries()) {
+            <div class="p-8 text-center text-stone-400 flex flex-col items-center gap-2">
+              <mat-icon class="animate-spin text-2xl">progress_activity</mat-icon>
+              <span class="text-xs">Loading your reflections from Firestore...</span>
+            </div>
+          } @else if (filteredEntries().length === 0) {
+            <div class="p-6 text-center text-stone-500 rounded-2xl bg-stone-50 border border-stone-200/60 my-4">
+              <mat-icon class="text-3xl text-stone-300 mb-2">edit_note</mat-icon>
+              <p class="text-xs font-semibold text-stone-700">No reflections found</p>
+              <p class="text-[11px] text-stone-500 mt-1">Start writing your first reflection on the right!</p>
+              <button
+                id="sidebar-start-first-entry-btn"
+                (click)="initNewEntry()"
+                class="mt-3 px-3 py-1.5 rounded-xl bg-stone-900 text-stone-50 text-xs font-medium hover:bg-stone-800 cursor-pointer inline-flex items-center gap-1"
+              >
+                <mat-icon class="text-sm">edit</mat-icon>
+                <span>Write Entry</span>
+              </button>
+            </div>
+          } @else {
+            @for (entry of filteredEntries(); track entry.id) {
+              <button
+                type="button"
+                id="entry-card-{{ entry.id }}"
+                (click)="loadEntry(entry)"
+                class="w-full p-3.5 rounded-xl border transition-all cursor-pointer text-left relative group block"
+                [class]="activeEntryId() === entry.id ? 'bg-stone-900 text-stone-50 border-stone-900 shadow-sm' : 'bg-stone-50/70 hover:bg-white text-stone-900 border-stone-200/80 hover:border-stone-300'"
+              >
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                  <h3 class="text-xs font-semibold leading-snug line-clamp-1 flex-1">
+                    {{ entry.title || 'Untitled Reflection' }}
+                  </h3>
+                  <span
+                    class="text-[10px] px-1.5 py-0.5 rounded-md font-medium capitalize shrink-0"
+                    [class]="activeEntryId() === entry.id ? 'bg-stone-800 text-stone-300' : 'bg-stone-200 text-stone-700'"
+                  >
+                    {{ entry.mood }}
+                  </span>
+                </div>
+
+                <p
+                  class="text-[11px] line-clamp-2 leading-relaxed mb-2.5"
+                  [class]="activeEntryId() === entry.id ? 'text-stone-300' : 'text-stone-500'"
+                >
+                  {{ entry.geminiInsight?.summary || entry.content || 'No text recorded.' }}
+                </p>
+
+                <div class="flex items-center justify-between text-[10px] pt-1.5 border-t" [class]="activeEntryId() === entry.id ? 'border-stone-800 text-stone-400' : 'border-stone-200 text-stone-400'">
+                  <span>{{ entry.updatedAt | date:'mediumDate' }}</span>
+                  <div class="flex items-center gap-2">
+                    @if (entry.interactions.length > 0) {
+                      <span class="flex items-center gap-0.5" title="Gemini conversation turns">
+                        <mat-icon class="text-xs">chat</mat-icon>
+                        <span>{{ entry.interactions.length }}</span>
+                      </span>
+                    }
+                    @if (entry.geminiInsight) {
+                      <span class="flex items-center gap-0.5 text-amber-500" title="Has AI insights">
+                        <mat-icon class="text-xs">auto_awesome</mat-icon>
+                      </span>
+                    }
+                    @if (entry.location) {
+                      <span class="flex items-center gap-0.5 text-amber-600 font-medium" [title]="entry.location.name">
+                        <mat-icon class="!w-3 !h-3 !text-[12px]">place</mat-icon>
+                        <span class="truncate max-w-[70px]">{{ entry.location.name }}</span>
+                      </span>
+                    }
+                  </div>
+                </div>
+              </button>
+            }
+          }
+        </div>
+      </aside>
+    }
+
+    <!-- Main Workspace (Editor + Gemini Chat + Insights) -->
+    <main class="flex-1 overflow-y-auto bg-stone-100 p-4 sm:p-6 lg:p-8">
+      <div class="max-w-4xl mx-auto space-y-6">
+        <!-- Mode & Mood Selection Header -->
+        <div class="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs space-y-4">
+          <!-- Journaling Modes -->
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-3.5">
+            <div class="flex items-center gap-1.5 overflow-x-auto">
+              <button
+                id="mode-btn-reflection"
+                (click)="setMode('reflection')"
+                class="px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                [class]="activeMode() === 'reflection' ? 'bg-stone-900 text-stone-50 shadow-xs' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'"
+              >
+                <mat-icon class="text-sm">self_improvement</mat-icon>
+                <span>Reflective Journal</span>
+              </button>
+
+              <button
+                id="mode-btn-brainstorm"
+                (click)="setMode('brainstorm')"
+                class="px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                [class]="activeMode() === 'brainstorm' ? 'bg-stone-900 text-stone-50 shadow-xs' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'"
+              >
+                <mat-icon class="text-sm">lightbulb</mat-icon>
+                <span>Brainstorming</span>
+              </button>
+
+              <button
+                id="mode-btn-clarity"
+                (click)="setMode('clarity')"
+                class="px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                [class]="activeMode() === 'clarity' ? 'bg-stone-900 text-stone-50 shadow-xs' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'"
+              >
+                <mat-icon class="text-sm">psychology</mat-icon>
+                <span>Clarity & Decisions</span>
+              </button>
+
+              <button
+                id="mode-btn-gratitude"
+                (click)="setMode('gratitude')"
+                class="px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                [class]="activeMode() === 'gratitude' ? 'bg-stone-900 text-stone-50 shadow-xs' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'"
+              >
+                <mat-icon class="text-sm">volunteer_activism</mat-icon>
+                <span>Gratitude</span>
+              </button>
+            </div>
+
+            <!-- Action Buttons (Save, Export, Delete) -->
+            <div class="flex items-center gap-2">
+              <button
+                id="workspace-export-btn"
+                (click)="exportMarkdown()"
+                class="p-2 rounded-xl text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                title="Export reflection to Markdown file"
+              >
+                <mat-icon class="text-base">download</mat-icon>
+                <span class="hidden sm:inline">Export</span>
+              </button>
+
+              <button
+                id="workspace-delete-btn"
+                (click)="deleteActiveEntry()"
+                class="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer text-xs"
+                title="Delete this reflection"
+              >
+                <mat-icon class="text-base">delete_outline</mat-icon>
+              </button>
+
+              <button
+                id="workspace-save-btn"
+                (click)="saveCurrentEntry()"
+                [disabled]="journalService.isSaving()"
+                class="px-4 py-2 rounded-xl bg-stone-900 text-stone-50 text-xs font-medium hover:bg-stone-800 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                @if (journalService.isSaving()) {
+                  <mat-icon class="animate-spin text-sm">sync</mat-icon>
+                  <span>Saving...</span>
+                } @else {
+                  <mat-icon class="text-sm">save</mat-icon>
+                  <span>Save to Firestore</span>
+                }
+              </button>
+            </div>
+          </div>
+
+          <!-- Title & Mood Pickers -->
+          <div [formGroup]="entryForm" class="space-y-3">
+            <input
+              id="workspace-title-input"
+              type="text"
+              formControlName="title"
+              placeholder="Give this reflection a title (e.g. Unwinding after a big decision)..."
+              class="w-full text-xl sm:text-2xl font-serif text-stone-900 placeholder:text-stone-400 font-medium focus:outline-hidden border-b border-transparent focus:border-stone-300 pb-1 transition-colors"
+            />
+
+            <!-- Mood Chips -->
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-stone-400 font-medium">Emotional Tone:</span>
+              <button
+                id="mood-peaceful"
+                type="button"
+                (click)="setMood('peaceful')"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                [class]="activeMood() === 'peaceful' ? 'bg-emerald-800 text-white' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'"
+              >
+                🌿 Peaceful
+              </button>
+              <button
+                id="mood-inspired"
+                type="button"
+                (click)="setMood('inspired')"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                [class]="activeMood() === 'inspired' ? 'bg-amber-800 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'"
+              >
+                ✨ Inspired
+              </button>
+              <button
+                id="mood-focused"
+                type="button"
+                (click)="setMood('focused')"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                [class]="activeMood() === 'focused' ? 'bg-indigo-800 text-white' : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100'"
+              >
+                🎯 Focused
+              </button>
+              <button
+                id="mood-anxious"
+                type="button"
+                (click)="setMood('anxious')"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                [class]="activeMood() === 'anxious' ? 'bg-rose-800 text-white' : 'bg-rose-50 text-rose-800 hover:bg-rose-100'"
+              >
+                🌧️ Overwhelmed / Anxious
+              </button>
+              <button
+                id="mood-reflective"
+                type="button"
+                (click)="setMood('reflective')"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                [class]="activeMood() === 'reflective' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'"
+              >
+                🪞 Reflective
+              </button>
+              <button
+                id="mood-grateful"
+                type="button"
+                (click)="setMood('grateful')"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                [class]="activeMood() === 'grateful' ? 'bg-teal-800 text-white' : 'bg-teal-50 text-teal-800 hover:bg-teal-100'"
+              >
+                🙏 Grateful
+              </button>
+            </div>
+
+            <!-- Location Pinning (Google Maps Integration) -->
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+              <span class="text-xs text-stone-400 font-medium">Location:</span>
+
+              @if (activeLocation(); as loc) {
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-700">place</mat-icon>
+                  <button
+                    type="button"
+                    (click)="openLocationViewer(loc)"
+                    class="font-semibold hover:underline cursor-pointer flex items-center gap-1"
+                    title="Click to view location details"
+                  >
+                    <span>{{ loc.name }}</span>
+                    @if (loc.address && loc.address !== loc.name) {
+                      <span class="text-amber-700/80 font-normal text-[11px] truncate max-w-[150px]">({{ loc.address }})</span>
+                    }
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-remove-pinned-location"
+                    (click)="removeLocation()"
+                    class="ml-1 text-amber-600 hover:text-rose-700 transition-colors cursor-pointer"
+                    title="Remove pinned location"
+                  >
+                    <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">close</mat-icon>
+                  </button>
+                </div>
+              } @else {
+                <button
+                  type="button"
+                  id="btn-open-pin-location-modal"
+                  (click)="openLocationModal()"
+                  class="px-2.5 py-1 rounded-lg text-xs font-medium text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 border border-stone-200/80 transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <mat-icon class="!w-3.5 !h-3.5 !text-[15px] text-stone-500">add_location_alt</mat-icon>
+                  <span>Pin Location</span>
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Journal Content Area + Input Type Toggle + Sparks & Audio Studio -->
+        <div class="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs space-y-4" [formGroup]="entryForm">
+          <!-- Input Mode Switcher Header -->
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-3">
+            <div class="flex items-center gap-1.5 p-1 rounded-xl bg-stone-100 border border-stone-200/70">
+              <button
+                id="input-mode-text-btn"
+                type="button"
+                (click)="setInputMode('text')"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+                [class]="inputMode() === 'text' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600 hover:text-stone-900'"
+              >
+                <mat-icon class="text-sm">edit_note</mat-icon>
+                <span>Text Journal</span>
+              </button>
+
+              <button
+                id="input-mode-audio-btn"
+                type="button"
+                (click)="setInputMode('audio')"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+                [class]="inputMode() === 'audio' ? 'bg-stone-900 text-stone-50 shadow-xs font-semibold' : 'text-stone-600 hover:text-stone-900'"
+              >
+                <mat-icon class="text-sm">mic</mat-icon>
+                <span>Voice Reflection</span>
+              </button>
+            </div>
+
+            <!-- Spark Ideas Trigger / Context Indicator -->
+            <div class="flex items-center gap-1 text-xs text-stone-400">
+              @if (inputMode() === 'audio') {
+                <span class="inline-flex items-center gap-1 text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg font-medium border border-amber-200/60">
+                  <mat-icon class="text-xs">graphic_eq</mat-icon>
+                  <span>Multimodal Voice to Text</span>
+                </span>
+              } @else {
+                <mat-icon class="text-sm">tips_and_updates</mat-icon>
+                <span>Click a spark below for inspiration</span>
+              }
+            </div>
+          </div>
+
+          <!-- Audio Voice Recording Studio (When in 'audio' mode) -->
+          @if (inputMode() === 'audio') {
+            <div class="p-4 sm:p-5 rounded-xl bg-gradient-to-b from-stone-50 to-stone-100/80 border border-stone-200/80 space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center">
+                    <mat-icon class="text-base">record_voice_over</mat-icon>
+                  </div>
+                  <div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-stone-800">Voice Recording Studio</h3>
+                    <p class="text-[11px] text-stone-500">Speak naturally. We transcribe your voice directly into your journal text.</p>
+                  </div>
+                </div>
+
+                <!-- Timer / Status -->
+                <div class="flex items-center gap-2">
+                  @if (isRecording()) {
+                    <span class="flex h-2.5 w-2.5 relative">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600"></span>
+                    </span>
+                    <span class="font-mono text-xs font-semibold text-rose-700">{{ formattedDuration }}</span>
+                  } @else if (geminiService.isTranscribing()) {
+                    <div class="flex items-center gap-1 text-xs text-amber-700 font-medium">
+                      <mat-icon class="animate-spin text-sm">progress_activity</mat-icon>
+                      <span>Transcribing audio...</span>
+                    </div>
+                  } @else {
+                    <span class="text-[11px] text-stone-400 font-medium">Ready to record</span>
+                  }
+                </div>
+              </div>
+
+              <!-- Recording Controls -->
+              <div class="flex flex-wrap items-center justify-center gap-3 py-2">
+                @if (!isRecording()) {
+                  <button
+                    id="audio-start-recording-btn"
+                    type="button"
+                    (click)="startAudioRecording()"
+                    [disabled]="geminiService.isTranscribing()"
+                    class="px-5 py-2.5 rounded-xl bg-stone-900 text-stone-50 hover:bg-stone-800 text-xs sm:text-sm font-medium transition-all shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <mat-icon class="text-base text-rose-400">mic</mat-icon>
+                    <span>Start Voice Recording</span>
+                  </button>
+
+                  <button
+                    id="audio-switch-to-text-btn"
+                    type="button"
+                    (click)="setInputMode('text')"
+                    class="px-4 py-2.5 rounded-xl bg-stone-200/80 text-stone-700 hover:bg-stone-300 text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <mat-icon class="text-sm">edit_note</mat-icon>
+                    <span>Back to Text Journal</span>
+                  </button>
+                } @else {
+                  <button
+                    id="audio-stop-recording-btn"
+                    type="button"
+                    (click)="stopAudioRecording()"
+                    class="px-5 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-xs sm:text-sm font-medium transition-all shadow-xs cursor-pointer flex items-center gap-2"
+                  >
+                    <mat-icon class="text-base">stop</mat-icon>
+                    <span>Finish & Transcribe Voice</span>
+                  </button>
+
+                  <button
+                    id="audio-cancel-recording-btn"
+                    type="button"
+                    (click)="cancelAudioRecording()"
+                    class="px-3.5 py-2.5 rounded-xl bg-stone-200 text-stone-700 hover:bg-stone-300 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <mat-icon class="text-sm">close</mat-icon>
+                    <span>Cancel</span>
+                  </button>
+                }
+              </div>
+
+              <!-- Live Speech Transcript Preview (While Recording) -->
+              @if (isRecording() && liveSpeechTranscript()) {
+                <div class="p-3 rounded-lg bg-white border border-stone-200 text-xs text-stone-700 italic space-y-1">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-stone-400 not-italic">Live Transcript Stream:</span>
+                  <p>{{ liveSpeechTranscript() }}</p>
+                </div>
+              }
+
+              <!-- Notices & Errors -->
+              @if (audioErrorMessage(); as audioErr) {
+                <div class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                  <mat-icon class="text-rose-600 text-sm">error</mat-icon>
+                  <span>{{ audioErr }}</span>
+                </div>
+              }
+
+              @if (audioSuccessNotice(); as notice) {
+                <div class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                  <mat-icon class="text-emerald-600 text-sm">check_circle</mat-icon>
+                  <span>{{ notice }}</span>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Spark Idea Pills -->
+          <div class="flex flex-wrap items-center gap-2">
+            @for (spark of sparkPrompts(); track spark) {
+              <button
+                id="spark-btn-{{ $index }}"
+                type="button"
+                (click)="applySpark(spark)"
+                class="px-2.5 py-1 rounded-lg text-[11px] bg-stone-50 hover:bg-stone-100 text-stone-600 border border-stone-200/70 transition-colors text-left cursor-pointer flex items-center gap-1"
+              >
+                <mat-icon class="text-xs text-amber-600">bolt</mat-icon>
+                <span>{{ spark }}</span>
+              </button>
+            }
+          </div>
+
+          <!-- Main Textarea -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between text-xs text-stone-500 font-medium px-1">
+              <span>Journal Text Area (Editable):</span>
+              <span class="text-[11px] text-stone-400">Stores strictly text in Cloud Firestore</span>
+            </div>
+            <textarea
+              id="workspace-content-textarea"
+              formControlName="content"
+              rows="10"
+              placeholder="Write or speak freely. If using voice, your transcription appears right here, and you can edit or review before saving to Firestore..."
+              class="w-full p-4 rounded-xl bg-stone-50/50 border border-stone-200 focus:outline-hidden focus:border-stone-400 text-sm sm:text-base leading-relaxed text-stone-800 placeholder:text-stone-400 font-sans resize-y"
+            ></textarea>
+          </div>
+
+          <!-- Workspace Quick Actions (Direct access after speaking or typing) -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
+            <div class="flex items-center gap-2">
+              <button
+                id="workspace-reflect-trigger-btn"
+                type="button"
+                (click)="startEntryReflection()"
+                [disabled]="geminiService.isThinking() || !entryForm.controls.content.value.trim()"
+                class="px-3.5 py-2 rounded-xl bg-stone-900 text-stone-50 text-xs font-medium hover:bg-stone-800 disabled:opacity-40 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                @if (geminiService.isThinking()) {
+                  <mat-icon class="animate-spin text-sm">progress_activity</mat-icon>
+                  <span>Reflecting...</span>
+                } @else {
+                  <mat-icon class="text-sm text-amber-400">auto_awesome</mat-icon>
+                  <span>Reflect with Gemini</span>
+                }
+              </button>
+
+              <button
+                id="workspace-save-secondary-btn"
+                type="button"
+                (click)="saveCurrentEntry()"
+                [disabled]="journalService.isSaving()"
+                class="px-3.5 py-2 rounded-xl bg-stone-100 text-stone-800 hover:bg-stone-200 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer border border-stone-200/80"
+              >
+                @if (journalService.isSaving()) {
+                  <mat-icon class="animate-spin text-sm">sync</mat-icon>
+                  <span>Saving...</span>
+                } @else {
+                  <mat-icon class="text-sm">save</mat-icon>
+                  <span>Save to Firestore</span>
+                }
+              </button>
+            </div>
+
+            <div class="text-[11px] text-stone-400 flex items-center gap-1">
+              <mat-icon class="text-xs">lock_outline</mat-icon>
+              <span>Pure text persisted securely to Cloud Firestore</span>
+            </div>
+          </div>
+
+          <!-- Tags Management -->
+          <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-stone-100">
+            <span class="text-xs text-stone-400 font-medium">Tags:</span>
+            @for (tag of activeTags(); track $index) {
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-700 text-xs font-medium">
+                <span>#{{ tag }}</span>
+                <button
+                  id="remove-tag-{{ $index }}"
+                  type="button"
+                  (click)="removeTag(tag)"
+                  class="text-stone-400 hover:text-stone-600 cursor-pointer"
+                >
+                  <mat-icon class="text-xs">close</mat-icon>
+                </button>
+              </span>
+            }
+
+            <div class="inline-flex items-center gap-1">
+              <input
+                id="workspace-tag-input"
+                type="text"
+                formControlName="tagInput"
+                (keydown.enter)="$event.preventDefault(); addTag()"
+                placeholder="Add tag..."
+                class="px-2 py-0.5 text-xs rounded-md bg-stone-50 border border-stone-200 focus:outline-hidden w-24"
+              />
+              <button
+                id="workspace-add-tag-btn"
+                type="button"
+                (click)="addTag()"
+                class="p-1 rounded-md bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs"
+              >
+                <mat-icon class="text-xs">add</mat-icon>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Multi-Turn Reflection Dialogue with Gemini -->
+        <div class="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 pb-3">
+            <div>
+              <h2 class="text-sm font-semibold text-stone-900 flex items-center gap-2">
+                <mat-icon class="text-stone-800 text-base">forum</mat-icon>
+                <span>Conversational Reflection with Gemini</span>
+              </h2>
+              <p class="text-xs text-stone-500">Ask questions, request positive reframing, brainstorm ideas, or dig deeper.</p>
+            </div>
+
+            <!-- Top Actions -->
+            <div class="flex items-center gap-2">
+              <button
+                id="conversational-reflect-entry-btn"
+                type="button"
+                (click)="startEntryReflection()"
+                [disabled]="geminiService.isThinking() || !entryForm.controls.content.value.trim()"
+                class="px-3 py-2 rounded-xl bg-stone-900 text-stone-50 hover:bg-stone-800 text-xs font-medium transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-40"
+              >
+                <mat-icon class="text-sm text-amber-400">auto_awesome</mat-icon>
+                <span>Reflect on this Entry</span>
+              </button>
+
+              <button
+                id="workspace-summarize-btn"
+                type="button"
+                (click)="generateInsights()"
+                [disabled]="geminiService.isSummarizing()"
+                class="px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 hover:bg-amber-100 text-xs font-medium transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                @if (geminiService.isSummarizing()) {
+                  <mat-icon class="animate-spin text-sm text-amber-700">progress_activity</mat-icon>
+                  <span>Analyzing Entry...</span>
+                } @else {
+                  <mat-icon class="text-sm text-amber-700">lightbulb</mat-icon>
+                  <span>Generate Deep Insights & Summary</span>
+                }
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick AI Reflection Prompts -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-stone-400 font-medium">Quick Inquiry:</span>
+            @for (q of quickAiQuestions(); track q.label) {
+              <button
+                id="quick-ai-btn-{{ $index }}"
+                type="button"
+                (click)="sendChatMessage(q.prompt)"
+                [disabled]="geminiService.isThinking()"
+                class="px-2.5 py-1 rounded-lg text-xs bg-stone-50 hover:bg-stone-100 text-stone-700 border border-stone-200/80 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <mat-icon class="text-xs text-stone-500">chat_bubble_outline</mat-icon>
+                <span>{{ q.label }}</span>
+              </button>
+            }
+          </div>
+
+          <!-- Dialogue Transcript Container -->
+          <div class="space-y-3.5 max-h-[500px] overflow-y-auto pr-1">
+            @if (activeInteractions().length === 0) {
+              <div class="p-6 text-center text-stone-400 rounded-xl bg-stone-50/50 border border-dashed border-stone-200">
+                <mat-icon class="text-2xl text-stone-300 mb-1">psychology</mat-icon>
+                <p class="text-xs font-medium text-stone-600">No dialogue turns yet.</p>
+                <p class="text-[11px] text-stone-400">Ask Gemini anything about your thoughts, or click one of the quick inquiry prompts above!</p>
+              </div>
+            } @else {
+              @for (turn of activeInteractions(); track $index) {
+                @if (turn.role === 'user') {
+                  <!-- User Message Bubble -->
+                  <div class="flex justify-end">
+                    <div class="max-w-2xl bg-stone-900 text-stone-50 rounded-2xl rounded-tr-xs px-4 py-3 text-xs sm:text-sm shadow-xs">
+                      <div class="flex items-center justify-between gap-4 mb-1 text-[10px] text-stone-400">
+                        <span class="font-semibold text-stone-200">You</span>
+                        <span>{{ turn.timestamp | date:'shortTime' }}</span>
+                      </div>
+                      <p class="whitespace-pre-wrap leading-relaxed">{{ turn.text }}</p>
+                    </div>
+                  </div>
+                } @else {
+                  <!-- Gemini Model Message Bubble -->
+                  <div class="flex justify-start">
+                    <div class="max-w-2xl bg-stone-50 border border-stone-200/90 text-stone-900 rounded-2xl rounded-tl-xs px-4 py-3.5 text-xs sm:text-sm shadow-xs">
+                      <div class="flex items-center justify-between gap-4 mb-1.5 pb-1 border-b border-stone-200/60 text-[10px] text-stone-500">
+                        <div class="flex items-center gap-1.5 font-semibold text-stone-800">
+                          <mat-icon class="text-xs text-amber-600">auto_awesome</mat-icon>
+                          <span>Gemini Reflection</span>
+                          @if (turn.modelUsed) {
+                            <span class="px-1.5 py-0.2 rounded-md bg-stone-200/70 text-stone-600 text-[9px] font-mono">{{ turn.modelUsed }}</span>
+                          }
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <span>{{ turn.timestamp | date:'shortTime' }}</span>
+                          <button
+                            id="copy-gemini-turn-{{ $index }}"
+                            (click)="copyText(turn.text)"
+                            class="text-stone-400 hover:text-stone-700"
+                            title="Copy response"
+                          >
+                            <mat-icon class="text-xs">content_copy</mat-icon>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="prose prose-stone text-xs sm:text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">
+                        {{ turn.text }}
+                      </div>
+                    </div>
+                  </div>
+                }
+              }
+            }
+
+            @if (geminiService.isThinking()) {
+              <div class="flex justify-start">
+                <div class="bg-stone-50 border border-stone-200 rounded-2xl rounded-tl-xs px-4 py-3 text-xs text-stone-600 flex items-center gap-2 shadow-xs">
+                  <mat-icon class="animate-spin text-sm text-stone-700">progress_activity</mat-icon>
+                  <span>Gemini is thoughtfully processing your thoughts...</span>
+                </div>
+              </div>
+            }
+
+            @if (geminiService.reflectionError(); as apiErr) {
+              <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <mat-icon class="text-rose-600 text-base">error_outline</mat-icon>
+                  <span><strong>Reflection Service Notice:</strong> {{ apiErr }}</span>
+                </div>
+                <button
+                  type="button"
+                  (click)="retryReflection()"
+                  class="px-2.5 py-1 bg-rose-700 text-white rounded-lg hover:bg-rose-800 transition-colors cursor-pointer text-[11px] font-medium shrink-0 flex items-center gap-1"
+                >
+                  <mat-icon class="text-xs">refresh</mat-icon>
+                  <span>Retry</span>
+                </button>
+              </div>
+            }
+          </div>
+
+          <!-- Conversational Prompt Input Form -->
+          <form [formGroup]="chatForm" (ngSubmit)="sendChatMessage()" class="pt-2">
+            <div class="relative flex items-center">
+              <input
+                id="workspace-chat-input"
+                type="text"
+                formControlName="prompt"
+                placeholder="Ask Gemini to reframe, explore deeper, or press Send to reflect on your entry..."
+                class="w-full pl-4 pr-24 py-3 rounded-xl bg-stone-50 border border-stone-200 focus:outline-hidden focus:border-stone-400 text-xs sm:text-sm text-stone-900 placeholder:text-stone-400 transition-colors"
+              />
+              <button
+                id="workspace-send-chat-btn"
+                type="submit"
+                [disabled]="geminiService.isThinking() || (!chatForm.controls.prompt.value.trim() && !entryForm.controls.content.value.trim())"
+                class="absolute right-2 px-3.5 py-1.5 rounded-lg bg-stone-900 text-stone-50 text-xs font-medium hover:bg-stone-800 disabled:opacity-40 transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <span>Send</span>
+                <mat-icon class="text-xs">send</mat-icon>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Deep Insights & Summarization Card (If Available) -->
+        @if (activeInsight(); as insight) {
+          <div class="bg-white rounded-2xl p-6 border border-stone-200/80 shadow-sm space-y-5">
+            <div class="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <mat-icon class="text-sm">insights</mat-icon>
+                </div>
+                <h3 class="text-sm font-semibold text-stone-900">Gemini Synthesis & Takeaways</h3>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700">
+                Tone: {{ insight.moodTone }}
+              </span>
+            </div>
+
+            <!-- Executive Summary -->
+            <div>
+              <h4 class="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1.5">Executive Summary</h4>
+              <p class="text-sm text-stone-700 leading-relaxed bg-stone-50/70 p-3.5 rounded-xl border border-stone-200/60 font-serif">
+                "{{ insight.summary }}"
+              </p>
+            </div>
+
+            <!-- Key Takeaways & Reflection Questions Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Key Takeaways -->
+              <div class="p-4 rounded-xl bg-stone-50/70 border border-stone-200/60 space-y-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1">
+                  <mat-icon class="text-sm text-emerald-600">check_circle</mat-icon>
+                  <span>Key Insights</span>
+                </h4>
+                <ul class="space-y-1.5 text-xs text-stone-700">
+                  @for (takeaway of insight.keyTakeaways; track takeaway) {
+                    <li class="flex items-start gap-1.5">
+                      <span class="text-stone-400">•</span>
+                      <span>{{ takeaway }}</span>
+                    </li>
+                  }
+                </ul>
+              </div>
+
+              <!-- Reflection Inquiries -->
+              <div class="p-4 rounded-xl bg-stone-50/70 border border-stone-200/60 space-y-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1">
+                  <mat-icon class="text-sm text-sky-600">help_outline</mat-icon>
+                  <span>Questions to Ask Yourself</span>
+                </h4>
+                <ul class="space-y-1.5 text-xs text-stone-700">
+                  @for (q of insight.reflectionQuestions; track q) {
+                    <li class="flex items-start gap-1.5">
+                      <span class="text-stone-400">?</span>
+                      <span class="italic">{{ q }}</span>
+                    </li>
+                  }
+                </ul>
+              </div>
+            </div>
+
+            <!-- Actionable Next Steps -->
+            @if (insight.actionableSteps.length > 0) {
+              <div class="p-4 rounded-xl bg-amber-50/50 border border-amber-200/60 space-y-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                  <mat-icon class="text-sm text-amber-700">task_alt</mat-icon>
+                  <span>Actionable Experiments / Next Steps</span>
+                </h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-stone-800">
+                  @for (step of insight.actionableSteps; track step) {
+                    <div class="p-2 rounded-lg bg-white border border-amber-100 flex items-center gap-2">
+                      <mat-icon class="text-xs text-amber-600">arrow_forward</mat-icon>
+                      <span>{{ step }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </main>
+  </div>
+
+  <!-- Location Picker Modal (Google Maps Integration) -->
+  @if (isLocationModalOpen()) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
+      <div class="bg-white rounded-2xl border border-stone-200 shadow-xl max-w-lg w-full overflow-hidden space-y-4 p-6">
+        <div class="flex items-center justify-between border-b border-stone-200 pb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+              <mat-icon class="!w-5 !h-5 !text-[20px]">add_location_alt</mat-icon>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-stone-900">Pin Location to Reflection</h3>
+              <p class="text-[11px] text-stone-500">Powered by Google Maps Platform</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            (click)="closeLocationModal()"
+            class="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
+          >
+            <mat-icon class="!w-5 !h-5 !text-[20px]">close</mat-icon>
+          </button>
+        </div>
+
+        @if (locationError()) {
+          <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+            <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-600">error_outline</mat-icon>
+            <span>{{ locationError() }}</span>
+          </div>
+        }
+
+        <!-- Detect Current Device Location Option -->
+        <button
+          type="button"
+          id="btn-detect-device-location"
+          (click)="detectDeviceLocation()"
+          [disabled]="isDetectingLocation()"
+          class="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
+        >
+          @if (isDetectingLocation()) {
+            <mat-icon class="!w-4 !h-4 !text-[16px] animate-spin text-amber-700">sync</mat-icon>
+            <span>Acquiring Device GPS Coordinates...</span>
+          } @else {
+            <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-700">my_location</mat-icon>
+            <span>Use My Current Device Location (GPS)</span>
+          }
+        </button>
+
+        <div class="flex items-center gap-3">
+          <div class="h-px bg-stone-200 flex-1"></div>
+          <span class="text-[11px] uppercase tracking-wider text-stone-400 font-semibold">Or Search Place / City</span>
+          <div class="h-px bg-stone-200 flex-1"></div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1">
+            <input
+              type="text"
+              id="input-location-search"
+              [value]="locationSearchInput()"
+              (input)="onLocationSearchInput($event)"
+              (keyup.enter)="searchLocationPlaces()"
+              placeholder="e.g. Central Park, Tokyo, Hyde Park..."
+              class="w-full pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all"
+            />
+            <mat-icon class="absolute left-2.5 top-2.5 text-stone-400 !w-4 !h-4 !text-[16px]">search</mat-icon>
+          </div>
+          <button
+            type="button"
+            id="btn-search-location"
+            (click)="searchLocationPlaces()"
+            [disabled]="isSearchingLocation()"
+            class="px-4 py-2 bg-stone-900 text-white rounded-xl text-xs font-medium hover:bg-stone-800 transition-colors cursor-pointer flex items-center gap-1"
+          >
+            @if (isSearchingLocation()) {
+              <mat-icon class="!w-3.5 !h-3.5 !text-[14px] animate-spin">sync</mat-icon>
+            } @else {
+              <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">search</mat-icon>
+            }
+            <span>Search</span>
+          </button>
+        </div>
+
+        <!-- Search Results List -->
+        @if (locationSearchResults().length > 0) {
+          <div class="space-y-1.5 max-h-40 overflow-y-auto border border-stone-200 rounded-xl p-2 bg-stone-50/50">
+            <p class="text-[10px] font-semibold text-stone-500 uppercase tracking-wider px-2">Select Place</p>
+            @for (item of locationSearchResults(); track item.name) {
+              <button
+                type="button"
+                (click)="pinLocation(item)"
+                class="w-full p-2 text-left rounded-lg hover:bg-white hover:border-amber-200 border border-transparent transition-colors flex items-center justify-between gap-2 cursor-pointer"
+              >
+                <div class="flex items-center gap-2 truncate">
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-600 shrink-0">place</mat-icon>
+                  <div class="truncate">
+                    <p class="text-xs font-semibold text-stone-900 leading-none truncate">{{ item.name }}</p>
+                    <p class="text-[10px] text-stone-500 leading-tight truncate mt-0.5">{{ item.address }}</p>
+                  </div>
+                </div>
+                <span class="text-[11px] text-amber-700 font-medium shrink-0">Pin &rarr;</span>
+              </button>
+            }
+          </div>
+        }
+
+        <!-- Popular Presets -->
+        <div class="space-y-2 pt-2 border-t border-stone-200">
+          <p class="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Inspirational Presets</p>
+          <div class="flex flex-wrap gap-1.5">
+            @for (preset of locationPresets; track preset.name) {
+              <button
+                type="button"
+                (click)="pinLocation(preset)"
+                class="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-amber-50 hover:text-amber-900 border border-stone-200/80 text-stone-700 text-xs transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <mat-icon class="!w-3 !h-3 !text-[12px] text-stone-400">place</mat-icon>
+                <span>{{ preset.name }}</span>
+              </button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Location Viewer Modal -->
+  @if (viewingMapLocation(); as loc) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
+      <div class="bg-white rounded-2xl border border-stone-200 shadow-xl max-w-md w-full overflow-hidden space-y-4 p-6">
+        <div class="flex items-center justify-between border-b border-stone-200 pb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+              <mat-icon class="!w-5 !h-5 !text-[20px]">location_on</mat-icon>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-stone-900">{{ loc.name }}</h3>
+              <p class="text-[11px] text-stone-500">Pinned Memory Location</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            (click)="closeLocationViewer()"
+            class="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
+          >
+            <mat-icon class="!w-5 !h-5 !text-[20px]">close</mat-icon>
+          </button>
+        </div>
+
+        <div class="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2 text-xs">
+          <div>
+            <span class="text-stone-400 font-medium">Address:</span>
+            <p class="text-stone-800 font-medium mt-0.5">{{ loc.address || loc.name }}</p>
+          </div>
+          <div class="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200 font-mono text-[11px]">
+            <div>
+              <span class="text-stone-400 font-sans">Latitude:</span>
+              <p class="text-stone-700 font-medium">{{ loc.latitude.toFixed(5) }}</p>
+            </div>
+            <div>
+              <span class="text-stone-400 font-sans">Longitude:</span>
+              <p class="text-stone-700 font-medium">{{ loc.longitude.toFixed(5) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-2">
+          <button
+            type="button"
+            (click)="closeLocationViewer()"
+            class="px-4 py-2 bg-stone-900 text-white rounded-xl text-xs font-medium hover:bg-stone-800 transition-colors cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>
